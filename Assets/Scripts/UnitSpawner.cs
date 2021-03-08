@@ -42,8 +42,8 @@ public class UnitSpawner
 
     private void CreateUnits()
     {
-        for ( int i = 0; i < 17; i++ )
-            for ( int j = 0; j < 17; j++ )
+        for ( int i = 0; i < 1; i++ )
+            for ( int j = 0; j < 1; j++ )
                 CreateArmy( new POS2D( 10 * i + 20 , 20 * j + 20 ) , GROUPS_WIDE , GROUPS_LONG );
     }
     private void CreateArmy( POS2D pos , int sizeX , int sizeZ )
@@ -114,11 +114,11 @@ public class UnitSpawner
         entityManager.SetComponentData( unit , new Drag { Value = 1.05f } );
         entityManager.SetComponentData( unit , new Direction { Value = new float3( 0 , 0 , 0 ) } );
 
-        /*entityManager.SetSharedComponentData( unit , new RenderMesh
+        entityManager.SetSharedComponentData( unit , new RenderMesh
         {
             mesh = unitMesh ,
             material = unitMaterial
-        } );*/
+        } );
 
         entityManager.SetComponentData( unit , new Translation { Value = new float3( pos2D.x , 1 , pos2D.z ) } );
         entityManager.SetComponentData( unit , new Scale { Value = UNIT_SCALE } );

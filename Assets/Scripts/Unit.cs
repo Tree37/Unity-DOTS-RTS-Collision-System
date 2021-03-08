@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using Unity.Entities;
 using UnityEngine;
 using Unity.Transforms;
@@ -31,8 +32,10 @@ public struct MoveForce : IComponentData
 {
     public float Value;
 }
+[StructLayout( LayoutKind.Explicit )]
 public struct Velocity : IComponentData
 {
+    [FieldOffset(4)]
     public float3 Value;
 }
 public struct Drag : IComponentData
@@ -40,6 +43,10 @@ public struct Drag : IComponentData
     public float Value;
 }
 public struct Mass : IComponentData
+{
+    public float Value;
+}
+public struct Radius : IComponentData
 {
     public float Value;
 }
