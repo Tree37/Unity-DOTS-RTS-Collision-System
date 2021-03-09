@@ -22,11 +22,11 @@ public struct Selected : IComponentData
 }
 public struct Direction : IComponentData
 {
-    public float3 Value;
+    public float2 Value;
 }
 public struct TargetPosition : IComponentData
 {
-    public float3 Value;
+    public float2 Value;
 }
 public struct MoveForce : IComponentData
 {

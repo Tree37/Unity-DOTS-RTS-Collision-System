@@ -289,7 +289,7 @@ public class InputSystem : SystemBase
             {
                 if ( batchSelected[ i ].Value )
                 {
-                    batchTarget[ i ] = new TargetPosition { Value = new float3( mousePosition.x , batchTarget[ i ].Value.y , mousePosition.z ) };
+                    batchTarget[ i ] = new TargetPosition { Value = new float2( mousePosition.x , mousePosition.z ) };
                     batchSelected[ i ] = new Selected { Value = false };
                 }
             }
