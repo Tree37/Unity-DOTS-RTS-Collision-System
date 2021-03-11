@@ -80,7 +80,7 @@ public class UnitMovementSystem : SystemBase
         };
         handle = boundsJob.ScheduleParallel( query , 1 , handle );
 
-        var heightsJob = new SetHeightsJob2
+        /*var heightsJob = new SetHeightsJob2
         {
             HALF_HEIGHT = 0.5f ,
             MAP_SIZE = MAP_SIZE ,
@@ -88,7 +88,7 @@ public class UnitMovementSystem : SystemBase
             vertices = terrainVertices ,
             translationHandle = GetComponentTypeHandle<Translation>()
         };
-        handle = heightsJob.ScheduleParallel( query , 1 , handle );
+        handle = heightsJob.ScheduleParallel( query , 1 , handle );*/
 
         Dependency = handle;
     }
@@ -247,7 +247,6 @@ public class UnitMovementSystem : SystemBase
             }
         }
     }
-
     [BurstCompile]
     private struct SetHeightsJob : IJobEntityBatch
     {
@@ -285,7 +284,6 @@ public class UnitMovementSystem : SystemBase
             }
         }
     }
-
     [BurstCompile]
     private struct SetHeightsJob2 : IJobEntityBatch
     {

@@ -12,6 +12,18 @@ public struct UnitTag : IComponentData
 
 }
 
+public struct HumanTag: IComponentData
+{
+}
+
+public struct CavalryTag: IComponentData
+{
+}
+
+public struct BeastTag : IComponentData
+{
+}
+
 public struct Moving : IComponentData
 {
     public int Value;

@@ -28,7 +28,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
     }
     protected override void OnUpdate()
     {
-        CollisionSystem();
+        CollisionSystemStateLess();
     }
     protected override void OnDestroy()
     {
@@ -69,7 +69,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
         cellsToUpdate.Dispose();
         base.OnDestroy();
     }
-    private void CollisionSystem()
+    private void CollisionSystemState()
     {
         query = GetEntityQuery( typeof( UnitTag ) );
         int numUnits = query.CalculateEntityCount();
@@ -166,6 +166,136 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
 
         Dependency = disposeHandle;
     }
+    private void CollisionSystemStateLess()
+    {
+        query = GetEntityQuery( typeof( UnitTag ) );
+        int numUnits = query.CalculateEntityCount();
+
+        var copyPositions = new NativeArray<float3>( numUnits , Allocator.TempJob , NativeArrayOptions.UninitializedMemory );
+        var copyVelocities = new NativeArray<float3>( numUnits , Allocator.TempJob , NativeArrayOptions.UninitializedMemory );
+        var copyMass = new NativeArray<byte>( numUnits , Allocator.TempJob , NativeArrayOptions.UninitializedMemory );
+        var collisionFlags = new NativeBitArray( numUnits , Allocator.TempJob , NativeArrayOptions.ClearMemory );
+        var collisionPairs = new NativeQueue<CollidingPair>( Allocator.TempJob );
+
+        var clearJob = new ClearGridJob
+        {
+            CELL_CAPACITY = CELL_CAPACITY ,
+            VOID_CELL_VALUE = VOID_CELL_VALUE ,
+            cellHandle = GetComponentTypeHandle<CollisionCell>() ,
+            grid = grid
+        };
+        var handle = clearJob.ScheduleParallel( query , 1 , Dependency );
+
+        var buildJob = new BuildGridJob
+        {
+            CELLS_ACROSS = CELLS_ACROSS ,
+            CELL_CAPACITY = CELL_CAPACITY ,
+            CELL_SIZE = CELL_SIZE ,
+            VOID_CELL_VALUE = VOID_CELL_VALUE ,
+            cellHandle = GetComponentTypeHandle<CollisionCell>() ,
+            translationHandle = GetComponentTypeHandle<Translation>() ,
+            grid = grid
+        };
+        var buildHandle = buildJob.Schedule( query , handle );
+
+        var copyUnitPosition = new CopyPositionsJob
+        {
+            translationHandle = GetComponentTypeHandle<Translation>() ,
+            copyArray = copyPositions
+        };
+        var copyUnitVelocity = new CopyVelocitesJob
+        {
+            velocityHandle = GetComponentTypeHandle<Velocity>() ,
+            copyArray = copyVelocities
+        };
+        var copyUnitMass = new CopyMassJob
+        {
+            massHandle = GetComponentTypeHandle<Mass>() ,
+            copyArray = copyMass
+        };
+        var copyHandle = JobHandle.CombineDependencies(
+            copyUnitPosition.ScheduleParallel( query , 1 , handle ) ,
+            copyUnitVelocity.ScheduleParallel( query , 1 , handle ) ,
+            copyUnitMass.ScheduleParallel( query , 1 , handle ) );
+
+        handle = JobHandle.CombineDependencies( buildHandle , copyHandle );
+
+        var findCollidingPairs = new FindCollidingPairsJob
+        {
+            CELL_SIZE = CELL_SIZE ,
+            CELLS_ACROSS = CELLS_ACROSS ,
+            CELL_CAPACITY = CELL_CAPACITY ,
+            RADIUS = 0.5f ,
+            grid = grid ,
+            copyPositions = copyPositions ,
+            collidingPairs = collisionPairs.AsParallelWriter() ,
+            collisionFlags = collisionFlags ,
+        };
+        handle = findCollidingPairs.Schedule( copyPositions.Length , 128 , handle );
+        handle.Complete();
+
+        var foundPairs = collisionPairs.ToArray( Allocator.TempJob );
+
+        var resolveCollisionsJob = new ResolveCollisionsJob()
+        {
+            CELL_SIZE = CELL_SIZE ,
+            CELLS_ACROSS = CELLS_ACROSS ,
+            CELL_CAPACITY = CELL_CAPACITY ,
+            RADIUS = 0.5f ,
+            collisionPairs = foundPairs ,
+            copyPositions = copyPositions ,
+            copyVelocities = copyVelocities ,
+            copyMass = copyMass
+        };
+        handle = resolveCollisionsJob.Schedule( foundPairs.Length , 128 , handle );
+
+        var writeResultsToUnits = new WriteDataJob
+        {
+            copyPositions = copyPositions ,
+            copyVelocities = copyVelocities ,
+            translationHandle = GetComponentTypeHandle<Translation>() ,
+            velocityHandle = GetComponentTypeHandle<Velocity>()
+        };
+        handle = writeResultsToUnits.ScheduleParallel( query , 1 , handle );
+
+        var disposeHandle = copyPositions.Dispose( handle );
+        disposeHandle = JobHandle.CombineDependencies( disposeHandle , copyVelocities.Dispose( handle ) );
+        disposeHandle = JobHandle.CombineDependencies( disposeHandle , copyMass.Dispose( handle ) );
+        disposeHandle = JobHandle.CombineDependencies( disposeHandle , collisionFlags.Dispose( handle ) );
+        disposeHandle = JobHandle.CombineDependencies( disposeHandle , collisionPairs.Dispose( handle ) );
+        disposeHandle = JobHandle.CombineDependencies( disposeHandle , foundPairs.Dispose( handle ) );
+
+        Dependency = disposeHandle;
+    }
+
+    private void Test()
+    {
+        query = GetEntityQuery( typeof( UnitTag ) );
+        int numUnits = query.CalculateEntityCount();
+
+        var clearJob = new ClearGridJob
+        {
+            CELL_CAPACITY = CELL_CAPACITY ,
+            VOID_CELL_VALUE = VOID_CELL_VALUE ,
+            cellHandle = GetComponentTypeHandle<CollisionCell>() ,
+            grid = grid
+        };
+        var handle = clearJob.ScheduleParallel( query , 1 , Dependency );
+
+        var buildJob = new BuildGridJob
+        {
+            CELLS_ACROSS = CELLS_ACROSS ,
+            CELL_CAPACITY = CELL_CAPACITY ,
+            CELL_SIZE = CELL_SIZE ,
+            VOID_CELL_VALUE = VOID_CELL_VALUE ,
+            cellHandle = GetComponentTypeHandle<CollisionCell>() ,
+            translationHandle = GetComponentTypeHandle<Translation>() ,
+            grid = grid
+        };
+        handle = buildJob.Schedule( query , handle );
+
+        Dependency = handle;
+    }
 
     [BurstCompile]
     private unsafe struct InitializeGridJob : IJob
@@ -179,7 +309,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
             void* p = &value;
             UnsafeUtility.MemCpyReplicate( spatialGrid.GetUnsafePtr() , p , sizeof( ushort ) , spatialGrid.Length );
         }
-    }
+    }    
     [BurstCompile]
     private struct BuildGridJob : IJobEntityBatchWithIndex
     {
@@ -213,6 +343,29 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
                         grid[ gridIndex + j ] = ( ushort ) ( indexOfFirstEntityInQuery + i );
                         break;
                     }
+                }
+            }
+        }
+    }
+    [BurstCompile]
+    private struct ClearGridJob : IJobEntityBatch
+    {
+        [ReadOnly] public ushort VOID_CELL_VALUE;
+        [ReadOnly] public int CELL_CAPACITY;
+        [ReadOnly] public ComponentTypeHandle<CollisionCell> cellHandle;
+        [NativeDisableParallelForRestriction] public NativeArray<ushort> grid;
+
+        public void Execute( ArchetypeChunk batchInChunk , int batchIndex )
+        {
+            NativeArray<CollisionCell> batchCell = batchInChunk.GetNativeArray( cellHandle );
+
+            for ( int i = 0; i < batchInChunk.Count; i++ )
+            {
+                int gridIndex = batchCell[ i ].Value * CELL_CAPACITY;
+
+                for ( int j = 0; j < CELL_CAPACITY; j++ )
+                {
+                    grid[ gridIndex + j ] = VOID_CELL_VALUE; 
                 }
             }
         }
