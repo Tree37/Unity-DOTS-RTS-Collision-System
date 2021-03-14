@@ -11,12 +11,12 @@ using Unity.Transforms;
 // CAPITOL VARIABLE NAMES WITH _ ARE CONSTANTS
 public class UnitDynamicCollisionSystemGrid : SystemBase
 {
-    private NativeArray<ushort> grid;
+    private NativeArray<ushort> personGrid;
     private NativeQueue<UpdateCellData> cellsToUpdate;
 
     private const float CELL_SIZE = 1f;
-    private const int CELLS_ACROSS = 3000;
-    private const int CELL_CAPACITY = 6;
+    private const int CELLS_ACROSS = 4000;
+    private const int CELL_CAPACITY = 8;
     private const ushort VOID_CELL_VALUE = 60000;
 
     private EntityQuery query;
@@ -24,28 +24,28 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
     protected unsafe override void OnStartRunning()
     {
         base.OnStartRunning();
-        Setup();
+        //Setup();
     }
     protected override void OnUpdate()
     {
-        CollisionSystemStateLess();
+        //CollisionSystemState();
     }
     protected override void OnDestroy()
     {
-        Cleanup();
+        //Cleanup();
         base.OnDestroy();
     }
 
     private void Setup()
     {
-        grid = new NativeArray<ushort>( CELLS_ACROSS * CELLS_ACROSS * CELL_CAPACITY , Allocator.Persistent , NativeArrayOptions.UninitializedMemory );
+        personGrid = new NativeArray<ushort>( CELLS_ACROSS * CELLS_ACROSS * CELL_CAPACITY , Allocator.Persistent , NativeArrayOptions.UninitializedMemory );
         cellsToUpdate = new NativeQueue<UpdateCellData>( Allocator.Persistent );
         query = GetEntityQuery( typeof( UnitTag ) );
 
         InitializeGridJob initJob = new InitializeGridJob // set all grid values to void value
         {
             VOID_CELL_VALUE = VOID_CELL_VALUE ,
-            spatialGrid = grid ,
+            spatialGrid = personGrid ,
         };
         JobHandle handle = initJob.Schedule( Dependency );
         handle.Complete();
@@ -57,7 +57,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
             VOID_CELL_VALUE = VOID_CELL_VALUE ,
             translationHandle = GetComponentTypeHandle<Translation>() ,
             cellHandle = GetComponentTypeHandle<CollisionCell>() ,
-            grid = grid ,
+            grid = personGrid ,
         };
         handle = buildGridJob.Schedule( query , handle );
         handle.Complete();
@@ -65,7 +65,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
     }
     private void Cleanup()
     {
-        grid.Dispose();
+        personGrid.Dispose();
         cellsToUpdate.Dispose();
         base.OnDestroy();
     }
@@ -94,7 +94,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
         {
             CELL_CAPACITY = CELL_CAPACITY ,
             VOID_CELL_VALUE = VOID_CELL_VALUE ,
-            grid = grid ,
+            grid = personGrid ,
             cellData = cellsToUpdate
         };
         handle = updateGridCells.Schedule( handle );
@@ -125,28 +125,27 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
             CELLS_ACROSS = CELLS_ACROSS ,
             CELL_CAPACITY = CELL_CAPACITY ,
             RADIUS = 0.5f ,
-            grid = grid ,
+            AVOID_RADIUS = 0.6f ,
+            grid = personGrid ,
             copyPositions = copyPositions ,
             collidingPairs = collisionPairs.AsParallelWriter() ,
             collisionFlags = collisionFlags ,
         };
-        handle = findCollidingPairs.Schedule( copyPositions.Length , 128 , handle );
+        handle = findCollidingPairs.Schedule( copyPositions.Length , 64 , handle );
         handle.Complete();
 
         var foundPairs = collisionPairs.ToArray( Allocator.TempJob );
 
         var resolveCollisionsJob = new ResolveCollisionsJob()
         {
-            CELL_SIZE = CELL_SIZE ,
-            CELLS_ACROSS = CELLS_ACROSS ,
-            CELL_CAPACITY = CELL_CAPACITY ,
             RADIUS = 0.5f ,
+            AVOID_RADIUS = 0.6f ,
             collisionPairs = foundPairs ,
             copyPositions = copyPositions ,
             copyVelocities = copyVelocities ,
             copyMass = copyMass
         };
-        handle = resolveCollisionsJob.Schedule( foundPairs.Length , 128 , handle );
+        handle = resolveCollisionsJob.Schedule( foundPairs.Length , 64 , handle );
 
         var writeResultsToUnits = new WriteDataJob
         {
@@ -182,7 +181,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
             CELL_CAPACITY = CELL_CAPACITY ,
             VOID_CELL_VALUE = VOID_CELL_VALUE ,
             cellHandle = GetComponentTypeHandle<CollisionCell>() ,
-            grid = grid
+            grid = personGrid
         };
         var handle = clearJob.ScheduleParallel( query , 1 , Dependency );
 
@@ -194,7 +193,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
             VOID_CELL_VALUE = VOID_CELL_VALUE ,
             cellHandle = GetComponentTypeHandle<CollisionCell>() ,
             translationHandle = GetComponentTypeHandle<Translation>() ,
-            grid = grid
+            grid = personGrid
         };
         var buildHandle = buildJob.Schedule( query , handle );
 
@@ -226,7 +225,8 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
             CELLS_ACROSS = CELLS_ACROSS ,
             CELL_CAPACITY = CELL_CAPACITY ,
             RADIUS = 0.5f ,
-            grid = grid ,
+            AVOID_RADIUS = 0.75f ,
+            grid = personGrid ,
             copyPositions = copyPositions ,
             collidingPairs = collisionPairs.AsParallelWriter() ,
             collisionFlags = collisionFlags ,
@@ -238,9 +238,6 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
 
         var resolveCollisionsJob = new ResolveCollisionsJob()
         {
-            CELL_SIZE = CELL_SIZE ,
-            CELLS_ACROSS = CELLS_ACROSS ,
-            CELL_CAPACITY = CELL_CAPACITY ,
             RADIUS = 0.5f ,
             collisionPairs = foundPairs ,
             copyPositions = copyPositions ,
@@ -267,34 +264,9 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
 
         Dependency = disposeHandle;
     }
-
-    private void Test()
+    private void CollisionSystemStateLessHierachical()
     {
-        query = GetEntityQuery( typeof( UnitTag ) );
-        int numUnits = query.CalculateEntityCount();
-
-        var clearJob = new ClearGridJob
-        {
-            CELL_CAPACITY = CELL_CAPACITY ,
-            VOID_CELL_VALUE = VOID_CELL_VALUE ,
-            cellHandle = GetComponentTypeHandle<CollisionCell>() ,
-            grid = grid
-        };
-        var handle = clearJob.ScheduleParallel( query , 1 , Dependency );
-
-        var buildJob = new BuildGridJob
-        {
-            CELLS_ACROSS = CELLS_ACROSS ,
-            CELL_CAPACITY = CELL_CAPACITY ,
-            CELL_SIZE = CELL_SIZE ,
-            VOID_CELL_VALUE = VOID_CELL_VALUE ,
-            cellHandle = GetComponentTypeHandle<CollisionCell>() ,
-            translationHandle = GetComponentTypeHandle<Translation>() ,
-            grid = grid
-        };
-        handle = buildJob.Schedule( query , handle );
-
-        Dependency = handle;
+        
     }
 
     [BurstCompile]
@@ -513,6 +485,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
         [ReadOnly] public int CELL_CAPACITY;
         [ReadOnly] public int CELLS_ACROSS;
         [ReadOnly] public float RADIUS;
+        [ReadOnly] public float AVOID_RADIUS;
 
         [ReadOnly] public NativeArray<ushort> grid;
         [ReadOnly] public NativeArray<float3> copyPositions;
@@ -537,12 +510,54 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
 
             FixedList128<int> newCells = new FixedList128<int>();
             newCells.Add( bl );
+
             if ( br != bl )
                 newCells.Add( br );
             if ( tl != bl )
                 newCells.Add( tl );
             if ( br != tl )
                 newCells.Add( tr );
+
+            /*FixedList128<float> distances = new FixedList128<float>();
+            FixedList128<int> otherUnitIndices = new FixedList128<int>();
+
+            for ( int i = 0; i < newCells.Length; i++ )
+            {
+                int gridIndex = newCells[ i ] * CELL_CAPACITY;
+                int count = 0;
+                while ( grid[ gridIndex + count ] != VOID_CELL_VALUE && count < CELL_CAPACITY )
+                {
+                    int otherUnitIndex = grid[ gridIndex + count ];
+
+                    if ( !collisionFlags.IsSet( otherUnitIndex ) )
+                    {
+                        otherUnitIndices.AddNoResize( otherUnitIndex );
+                    }
+
+                    count++;
+                }
+            }
+
+            for ( int i = 0; i < otherUnitIndices.Length; i++ )
+            {
+                float px2 = copyPositions[ otherUnitIndices[ i ] ].x;
+                float pz2 = copyPositions[ otherUnitIndices[ i ] ].z;
+                float distance = math.sqrt( ( px - px2 ) * ( px - px2 ) + ( pz - pz2 ) * ( pz - pz2 ) );
+                distances[ i ] = distance;
+            }
+
+            for ( int i = 0; i < distances.Length; i++ )
+            {
+                if ( distances[ i ] < AVOID_RADIUS )
+                {
+                    collidingPairs.Enqueue( new CollidingPair
+                    {
+                        unit1 = ( ushort ) index ,
+                        unit2 = ( ushort ) otherUnitIndices[ i ] ,
+                        distance = distances[ i ]
+                    } );
+                }
+            }*/
 
             for ( int i = 0; i < newCells.Length; i++ )
             {
@@ -559,7 +574,7 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
                         float pz2 = copyPositions[ otherUnitIndex ].z;
                         float distance = math.sqrt( ( px - px2 ) * ( px - px2 ) + ( pz - pz2 ) * ( pz - pz2 ) );
 
-                        if ( distance < RADIUS )
+                        if ( distance < AVOID_RADIUS )
                         {
                             collidingPairs.Enqueue( new CollidingPair
                             {
@@ -573,113 +588,13 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
                     count++;
                 }
             }
-
-            /*float4 AABB = new float4(
-                px - RADIUS ,
-                pz - RADIUS ,
-                px + RADIUS ,
-                pz + RADIUS );
-            float4 minMaxX = new float4(
-                AABB.x ,
-                AABB.z ,
-                AABB.x ,
-                AABB.z );
-            float4 minMaxZ = new float4(
-                AABB.y ,
-                AABB.w ,
-                AABB.y ,
-                AABB.w );
-            int4 neighbours = ( int4 ) ( math.floor( minMaxX / CELL_SIZE ) + math.floor( minMaxZ / CELL_SIZE ) * CELLS_ACROSS );          
-
-            FixedList128<int> newCellsSIMD = new FixedList128<int>();
-            newCellsSIMD.Add( neighbours.x );
-            if ( neighbours.x != neighbours.y )
-                newCellsSIMD.Add( neighbours.y );
-            if ( neighbours.z != neighbours.x )
-                newCellsSIMD.Add( neighbours.z );
-            if ( neighbours.y != neighbours.z )
-                newCellsSIMD.Add( neighbours.w );
-
-            FixedList128<int> units = new FixedList128<int>();
-
-            for ( int i = 0; i < newCellsSIMD.Length; i++ )
-            {
-                int gridIndex = newCellsSIMD[ i ] * CELL_CAPACITY;
-                int count = 0;
-
-                while ( grid[ gridIndex + count ] != VOID_CELL_VALUE && count < CELL_CAPACITY )
-                {
-                    int otherUnitIndex = grid[ gridIndex + count ];
-
-                    if ( !collisionFlags.IsSet( otherUnitIndex ) )
-                        units.Add( otherUnitIndex );
-
-                    count++;
-                }
-            }
-
-            FixedList128<bool> colliders = new FixedList128<bool>();
-            FixedList128<float> distances = new FixedList128<float>();
-
-            int si = 0;
-            for ( si = 0; si < units.Length - 4; si += 4 )
-            {
-                float4 px2 = new float4(
-                    copyPositions[ units[ si ] ].x ,
-                    copyPositions[ units[ si + 1 ] ].x ,
-                    copyPositions[ units[ si + 2 ] ].x ,
-                    copyPositions[ units[ si + 3 ] ].x );
-                float4 pz2 = new float4(
-                    copyPositions[ units[ si ] ].z ,
-                    copyPositions[ units[ si + 1 ] ].z ,
-                    copyPositions[ units[ si + 2 ] ].z ,
-                    copyPositions[ units[ si + 3 ] ].z );
-
-                float4 distance = math.sqrt( ( px - px2 ) * ( px - px2 ) + ( pz - pz2 ) * ( pz - pz2 ) );
-                bool4 collides = distance < RADIUS;
-
-                distances.Add( distance.x );
-                distances.Add( distance.y );
-                distances.Add( distance.z );
-                distances.Add( distance.w );
-
-                colliders.Add( collides.x );
-                colliders.Add( collides.y );
-                colliders.Add( collides.z );
-                colliders.Add( collides.w );
-            }
-            for ( int i = si; i < units.Length; i++)
-            {
-                float px2 = copyPositions[ units[ i ] ].x;
-                float pz2 = copyPositions[ units[ i ] ].z;
-                float distance = math.sqrt( ( px - px2 ) * ( px - px2 ) + ( pz - pz2 ) * ( pz - pz2 ) );
-                bool collides = distance < RADIUS;
-
-                distances.Add( distance );
-                colliders.Add( collides );
-            }
-
-            for ( int i = 0; i < colliders.Length; i++ )
-            {
-                if ( colliders[ i ] )
-                {
-                    collidingPairs.Enqueue( new CollidingPair
-                    {
-                        unit1 = ( ushort ) index ,
-                        unit2 = ( ushort ) units[ i ] ,
-                        distance = distances[ i ]
-                    } );
-                }
-            }*/
         }
     }
     [BurstCompile]
     private struct ResolveCollisionsJob : IJobParallelFor
     {
-        [ReadOnly] public float CELL_SIZE;
-        [ReadOnly] public int CELLS_ACROSS;
         [ReadOnly] public float RADIUS;
-        [ReadOnly] public int CELL_CAPACITY;
+        [ReadOnly] public float AVOID_RADIUS;
 
         [ReadOnly] public NativeArray<CollidingPair> collisionPairs;
         [NativeDisableParallelForRestriction] public NativeArray<float3> copyPositions;
@@ -710,8 +625,21 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
 
             float overlap = 0.5f * ( distance - RADIUS );
 
-            float ax =  ( overlap * ( px - px2 ) ) / ( distance + 0.01f );
-            float az =  ( overlap * ( pz - pz2 ) ) / ( distance + 0.01f );
+            if ( distance > RADIUS )
+            {
+                overlap = 0.1f * ( distance - AVOID_RADIUS );
+            }
+
+            float ax = ( overlap * ( px - px2 ) ) / ( distance + 0.001f ); // math.clamp( ( overlap * ( px - px2 ) ) / ( distance + 0.001f ) , -1 , 1 );
+            float az = ( overlap * ( pz - pz2 ) ) / ( distance + 0.001f ); //math.clamp( ( overlap * ( pz - pz2 ) ) / ( distance + 0.001f ) , -1 , 1 );
+            ax = math.clamp( ax , -1f , 1f );
+            az = math.clamp( az , -1f , 1f );
+
+            /*if ( overlap >= 0 )
+            {
+                ax = 0.001f;
+                az = 0.001f;
+            }*/
 
             float ax1 = px - ax;
             float az1 = pz - az;
@@ -733,6 +661,11 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
             copyVelocities[ unit1 ] = new float3( vx , vy , vz );
             copyPositions[ unit2 ] = new float3( ax2 , py2 , az2 );
             copyVelocities[ unit2 ] = new float3( vx2 , vy2 , vz2 );
+
+            /*copyPositions[ unit1 ] = new float3( ax1 , py , az1 );
+            copyVelocities[ unit1 ] = new float3( nVel1.x , vy , nVel1.y );
+            copyPositions[ unit2 ] = new float3( ax2 , py2 , az2 );
+            copyVelocities[ unit2 ] = new float3( nVel2.x , vy2 , nVel2.y );*/
         }
     }
     [BurstCompile]
@@ -770,3 +703,140 @@ public class UnitDynamicCollisionSystemGrid : SystemBase
         public float distance;
     }
 }
+
+// for collision detection sort by unit group first
+// then do the same thing for all units too far from formation
+
+// while in combat, the frontline of unit can be changed by clicing on a different enemy unit
+
+// for pushing through enemy units
+// once move order is given the group will have countdown immunity for move order
+// after like 1-3 seconds, will stop moving because still inside/within other group
+// when fighting other group, units move forward incrementally
+// during a charge, units are given a force of move plus charge
+// as soon as unit hits a target, a countdown starts, and unit stops charging one counter is done
+// can charge at specific location just charging through everything good for routing enemies
+
+// so unit chargea, units bunch up but they stop their forward charge one by one as they hit enemies
+// as they stand there all units always bubble away from each other to like half a meter apart
+// units every second or 2 apply forward force to simulate push and pull
+// in no formation this is basic combat
+// in formation they do this but also flock to formation position
+// formation position can change
+
+// for formation fighting a formation has a shape, the shape is literally the rectangular (grid) of each unit in formation
+// this means formation has sides (front, back, left, right) 
+// so 4 frontlines
+// while fighting, in a certain direction, units can move "forward"
+// xxxxx   x 
+// xxxxx  x xx
+//        xxxx
+// this happens when unit kills enemy units, or pushes it back
+// when this happens, will check previous units until one if found, and it will move up to fill space
+// this means when two formations are fighting, a temporary grid is setup there
+// units cannot move into parts of grid that are occupied
+// when two groups engage,
+// a grid is created large enough to encompass both units shapes, and the "battlefield" for those two units is the grid
+// each gridspot can hold one entity
+// if an enemy takes allies grid spot, lets say through a push or through a charge,
+// the ally is then "lost", it doesnt have a spot but still tries to push back to its old spot until it retakes it or dies or finds another spot
+// if a unit is in defensive formation, it still has the grid but does not advance or otherwise purposely change shape
+// if for example a formation gets charged and a bunch of frontliners are pushed back, will be detected and formation will move back
+
+/*float4 AABB = new float4(
+    px - RADIUS ,
+    pz - RADIUS ,
+    px + RADIUS ,
+    pz + RADIUS );
+float4 minMaxX = new float4(
+    AABB.x ,
+    AABB.z ,
+    AABB.x ,
+    AABB.z );
+float4 minMaxZ = new float4(
+    AABB.y ,
+    AABB.w ,
+    AABB.y ,
+    AABB.w );
+int4 neighbours = ( int4 ) ( math.floor( minMaxX / CELL_SIZE ) + math.floor( minMaxZ / CELL_SIZE ) * CELLS_ACROSS );          
+
+FixedList128<int> newCellsSIMD = new FixedList128<int>();
+newCellsSIMD.Add( neighbours.x );
+if ( neighbours.x != neighbours.y )
+    newCellsSIMD.Add( neighbours.y );
+if ( neighbours.z != neighbours.x )
+    newCellsSIMD.Add( neighbours.z );
+if ( neighbours.y != neighbours.z )
+    newCellsSIMD.Add( neighbours.w );
+
+FixedList128<int> units = new FixedList128<int>();
+
+for ( int i = 0; i < newCellsSIMD.Length; i++ )
+{
+    int gridIndex = newCellsSIMD[ i ] * CELL_CAPACITY;
+    int count = 0;
+
+    while ( grid[ gridIndex + count ] != VOID_CELL_VALUE && count < CELL_CAPACITY )
+    {
+        int otherUnitIndex = grid[ gridIndex + count ];
+
+        if ( !collisionFlags.IsSet( otherUnitIndex ) )
+            units.Add( otherUnitIndex );
+
+        count++;
+    }
+}
+
+FixedList128<bool> colliders = new FixedList128<bool>();
+FixedList128<float> distances = new FixedList128<float>();
+
+int si = 0;
+for ( si = 0; si < units.Length - 4; si += 4 )
+{
+    float4 px2 = new float4(
+        copyPositions[ units[ si ] ].x ,
+        copyPositions[ units[ si + 1 ] ].x ,
+        copyPositions[ units[ si + 2 ] ].x ,
+        copyPositions[ units[ si + 3 ] ].x );
+    float4 pz2 = new float4(
+        copyPositions[ units[ si ] ].z ,
+        copyPositions[ units[ si + 1 ] ].z ,
+        copyPositions[ units[ si + 2 ] ].z ,
+        copyPositions[ units[ si + 3 ] ].z );
+
+    float4 distance = math.sqrt( ( px - px2 ) * ( px - px2 ) + ( pz - pz2 ) * ( pz - pz2 ) );
+    bool4 collides = distance < RADIUS;
+
+    distances.Add( distance.x );
+    distances.Add( distance.y );
+    distances.Add( distance.z );
+    distances.Add( distance.w );
+
+    colliders.Add( collides.x );
+    colliders.Add( collides.y );
+    colliders.Add( collides.z );
+    colliders.Add( collides.w );
+}
+for ( int i = si; i < units.Length; i++)
+{
+    float px2 = copyPositions[ units[ i ] ].x;
+    float pz2 = copyPositions[ units[ i ] ].z;
+    float distance = math.sqrt( ( px - px2 ) * ( px - px2 ) + ( pz - pz2 ) * ( pz - pz2 ) );
+    bool collides = distance < RADIUS;
+
+    distances.Add( distance );
+    colliders.Add( collides );
+}
+
+for ( int i = 0; i < colliders.Length; i++ )
+{
+    if ( colliders[ i ] )
+    {
+        collidingPairs.Enqueue( new CollidingPair
+        {
+            unit1 = ( ushort ) index ,
+            unit2 = ( ushort ) units[ i ] ,
+            distance = distances[ i ]
+        } );
+    }
+}*/

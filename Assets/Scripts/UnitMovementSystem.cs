@@ -46,7 +46,8 @@ public class UnitMovementSystem : SystemBase
         {
             translationHandle = GetComponentTypeHandle<Translation>() ,
             targetHandle = GetComponentTypeHandle<TargetPosition>() ,
-            movingHandle = GetComponentTypeHandle<Moving>()
+            movingHandle = GetComponentTypeHandle<Moving>() ,
+            forceHandle = GetComponentTypeHandle<MoveForce>() 
         };
         handle = updateMovingJob.ScheduleParallel( query , 1 , handle );
 
@@ -137,14 +138,19 @@ public class UnitMovementSystem : SystemBase
     [BurstCompile]
     private struct UpdateMovementStateJob : IJobEntityBatch
     {
+        [ReadOnly] public float deltaTime;
         [ReadOnly] public ComponentTypeHandle<Translation> translationHandle;
         [ReadOnly] public ComponentTypeHandle<TargetPosition> targetHandle;
+        public ComponentTypeHandle<MoveForce> forceHandle;
+        //public ComponentTypeHandle<NearTargetTimer> timerHandle;
         public ComponentTypeHandle<Moving> movingHandle;
 
         public void Execute( ArchetypeChunk batchInChunk , int batchIndex )
         {
             NativeArray<Translation> batchTranslation = batchInChunk.GetNativeArray( translationHandle );
             NativeArray<TargetPosition> batchTarget = batchInChunk.GetNativeArray( targetHandle );
+            //NativeArray<NearTargetTimer> batchTimer = batchInChunk.GetNativeArray( timerHandle );
+            NativeArray<MoveForce> batchForce = batchInChunk.GetNativeArray( forceHandle );
             NativeArray<Moving> batchMoving = batchInChunk.GetNativeArray( movingHandle );
 
             for ( int i = 0; i < batchInChunk.Count; i++ )
@@ -152,7 +158,92 @@ public class UnitMovementSystem : SystemBase
                 float2 pos2D = new float2( batchTranslation[ i ].Value.x , batchTranslation[ i ].Value.z );
                 float distance = math.distance( batchTarget[ i ].Value , pos2D );
                 int moving = math.select( 1 , -1 , distance <= 0.05f );
+
+                float moveForce = math.select( 1f , 0.1f , distance <= 0.5f );
+
+                batchForce[ i ] = new MoveForce { Value = moveForce };
                 batchMoving[ i ] = new Moving { Value = moving };
+
+                /*if ( batchMoving[ i ].Value == 1 ) // if reforming
+                {
+                    float time = batchTimer[ i ].Value - deltaTime;
+                }*/
+
+                // if we havent moved enough distance within some time, 
+                //   stop trying to move
+                //   set timer for when to try again
+                // if timer to try again is up
+                //   we start trying again
+                // repeat
+
+                // if within some radius of target position
+                //   we are not moving
+                // if not within some smaller radius of target position
+                //   periodically set movement state to reform and move towards target position
+                //   if blocked just stop moving and wait for reset
+
+                // on impact
+                //   if one momemtum is much large than the other and they are enemies
+                //     large momentum should give large force to other unit
+                //     other unit should push it's column or row in formation back if force is greater than some threshold
+
+                // while in formation,
+                //   each unit is checked
+                //   if they are out of their gridspot for a long enough time, 
+                //     that col/row should be notified to adjust accodringly (move up/back)
+
+                // if moving
+                //   if collides with enemy soldier,
+                //     stop moving and start fighting
+                //     if lone soldier group ignores
+                //     else if neeaby group, group starts fighting them
+
+                // when do units collide
+                //   when one formation moves through another friendly group
+                //   when two enemy groups charge
+                //   when two enemy units are fighting
+
+                // unit group
+                //   list of all unit id's
+                //   center
+                //   target position
+
+                // formation
+                //   unit group
+                //   center
+                //   front, back, left, right ( faces )
+                //   rotation
+                //   position
+                //   target position
+                //   shapegrid
+
+                // shapegrid
+                //   width, height
+                //   occupied/not occupied
+
+                // in combat
+                //   if lands attack
+                //     pushes applies force to enemy unit
+                //     will try to push forward toward "frontline" of unit
+                //     pushes forward in formation to next "gridslot"
+                //     on enemie's grid, if the unit that was pushed back isnt actually dead,
+                //       all units behind and including it are pushed back one
+                // 
+
+                // formation
+                //   moves as its own entity
+                //   rotates as well
+                //   containes value of center of mass of formation in real units
+                //   units move to formation center plus their offset
+                //     this is calculated maybe once a second?
+                //   if comes into contact with enemy unit if a certain number of their units collide
+                //     this is now the frontline
+                //     target position is now currentposition
+                //     target position while attacking is like one unit ahead of where standing
+                //     units periodically shuffle forwards if attacking
+                //     if attcked on the sides or back units turn to face and fight but only 1-2 lines deep
+                //     unless selected defensive multi-sided formation
+
             }
         }
     }
@@ -196,7 +287,7 @@ public class UnitMovementSystem : SystemBase
             for ( int i = 0; i < batchInChunk.Count; i++ )
             {
                 float3 drag = batchVelocity[ i ].Value / batchDrag[ i ].Value;
-                float3 newVelocity = batchVelocity[ i ].Value - drag;
+                float3 newVelocity = batchVelocity[ i ].Value - drag * 0.5f;
                 batchVelocity[ i ] = new Velocity { Value = newVelocity };
             }
         }
@@ -361,4 +452,14 @@ public class UnitMovementSystem : SystemBase
     // problem solved!
     // we can just manually set heights with this
     // and collisions is decoupled!!!!
+
+    // every frame 
+    // move units
+    // check collisions
+    // sort friendly, enemy
+    // if colliding with enemy
+    //   data is stored with entity telling it so?
+
+    // while charging units move with a force for every enemy they hit their forced is transfered and they slow down till they stop
+    // when given an order to move 
 }

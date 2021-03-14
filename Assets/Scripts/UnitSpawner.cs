@@ -19,7 +19,7 @@ public class UnitSpawner
 
     // Just unit spacing data, units spawned in "groups" withing "armies", which are groups of groups
     private const float UNIT_SCALE = 0.5f;
-    private const float UNIT_SPACING = 0.25f;
+    private const float UNIT_SPACING = 0.20f;
     private const float GROUP_SPACING = 1f;
     private const float GROUP_SIZE_X = ( UNIT_SCALE + UNIT_SPACING ) * UNITS_WIDE;
     private const float GROUP_SIZE_Z = ( UNIT_SCALE + UNIT_SPACING ) * UNITS_LONG;
@@ -29,6 +29,8 @@ public class UnitSpawner
     private const int UNITS_LONG = 25;
     private const int GROUPS_LONG = 1;
     private const int GROUPS_WIDE = 1;
+
+    private int collisionCount = 0;
 
     public UnitSpawner( Mesh mesh , Material material )
     {
@@ -44,7 +46,7 @@ public class UnitSpawner
     {
         for ( int i = 0; i < 14; i++ )
             for ( int j = 0; j < 14; j++ )
-                CreateArmy( new POS2D( 20 * i + 20 , 40 * j + 20 ) , GROUPS_WIDE , GROUPS_LONG );
+                CreateArmy( new POS2D( 200 * i + 20 , 200 * j + 20 ) , GROUPS_WIDE , GROUPS_LONG );
     }
     private void CreateArmy( POS2D pos , int sizeX , int sizeZ )
     {
@@ -97,6 +99,7 @@ public class UnitSpawner
             typeof( Selected ) ,
             typeof( Moving ) ,
 
+            typeof( CollisionTypeSCD ) ,
             typeof( CollisionCell ) ,
             typeof( CollisionCellMulti ) );
 
@@ -110,19 +113,25 @@ public class UnitSpawner
 
         entityManager.SetComponentData( unit , new Selected { Value = false } );
         entityManager.SetComponentData( unit , new Moving { Value = -1 } );
-        entityManager.SetComponentData( unit , new MoveForce { Value = UnityEngine.Random.Range( 10f , 35f ) } );
+        entityManager.SetComponentData( unit , new MoveForce { Value = UnityEngine.Random.Range( 20f , 40f ) } );
         entityManager.SetComponentData( unit , new Drag { Value = 1.05f } );
         entityManager.SetComponentData( unit , new Direction { Value = new float2( 0 , 0 ) } );
 
         /*entityManager.SetSharedComponentData( unit , new RenderMesh
         {
             mesh = unitMesh ,
-            material = unitMaterial ,
-            castShadows = UnityEngine.Rendering.ShadowCastingMode.On
+            material = unitMaterial
+            //castShadows = UnityEngine.Rendering.ShadowCastingMode.On
         } );*/
 
         entityManager.SetComponentData( unit , new Translation { Value = new float3( pos2D.x , 1 , pos2D.z ) } );
         entityManager.SetComponentData( unit , new Scale { Value = UNIT_SCALE } );
+
+        entityManager.SetSharedComponentData( unit , new CollisionTypeSCD { Value = collisionCount } );
+
+        collisionCount++;
+        if ( collisionCount > 1 )
+            collisionCount = 0;
     }
 
     private struct POS2D

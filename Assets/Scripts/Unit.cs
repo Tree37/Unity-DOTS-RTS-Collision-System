@@ -12,21 +12,18 @@ public struct UnitTag : IComponentData
 
 }
 
-public struct HumanTag: IComponentData
+public struct CollisionTypeSCD : ISharedComponentData
 {
-}
-
-public struct CavalryTag: IComponentData
-{
-}
-
-public struct BeastTag : IComponentData
-{
+    public int Value;
 }
 
 public struct Moving : IComponentData
 {
     public int Value;
+}
+public struct NearTargetTimer : IComponentData
+{
+    public float Value;
 }
 public struct Selected : IComponentData
 {
